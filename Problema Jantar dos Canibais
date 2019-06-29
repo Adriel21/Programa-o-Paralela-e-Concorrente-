@@ -1,0 +1,132 @@
+from threading import Thread, Lock, enumerate, Event
+import time
+import datetime
+
+mutex = Lock()                                                                                         # Trava que garante a exclusão mútua da variável caldeirão
+
+# Variáveis especificadas para o trabalho
+caldeirao = 5
+canibalTempoServir = 1
+canibalTempoComer = 3
+jantarPreparacao = 5
+
+canibais = []                                                                                          # Lista na qual os canibais serão adicionados
+
+# Sinalizam que um evento ocorre
+CanibalEvent = Event()
+CozinheiroEvent = Event()
+
+class Canibal:
+
+    def __init__(self, nome):                                                                          # Método de inicialização da classe que recebe o nome do canival
+        self.nome = nome                                                                               # Nome do canibal instanciado
+        self.qtdRefeicoes = 0                                                                          # Quantidade de refeições que cada canibal fez
+        self.dormindo = False                                                                          # Variável para setar o canibal para dormir(true) ou acordar(false), ou para verificação
+        #self.podeJantar = False                                                                        # Variável que garante que o canibal só pode jantar depois de se servir
+        workingThread = Thread(target=self.comecar)                                                    # Cria a Thread
+        workingThread.daemon = True                                                                    # Deve-se usar a thread como daemon para garantir que alguma thread permaneça rodando
+        workingThread.start()                                                                          # Inicia a Thread
+
+    def dormir(self):                                                                                  # Método que faz o canibal dormir
+        self.dormindo = True                                                                           # Canibal dorme
+        print(f'{self.nome} dormiu')
+        CanibalEvent.clear()                                                                           # Faz com que a classe canibal seja bloqueada até que a função set() a desbloqueie
+        CanibalEvent.wait()                                                                            # Canibal dorme a espera de um evento set
+
+    def servir(self):                                                                                  # Método que faz com que o canibal se sirva
+        global caldeirao
+        global canibais
+
+        if caldeirao == 0:                                                                             # Se o caldeirão está vazio, prossegue
+            canibaisDormindo = 0                                                                       # Não se sabe quantos canibais estão dormindo
+            for canibal in canibais:                                                                   # Laço para percorrer a lista canibais
+                if (canibal.dormindo):                                                                 # Se o canibal da posição atual estiver dormindo, prossegue
+                    canibaisDormindo += 1                                                              # Como o canibal está dormindo, o número de canibais conhecidos que estão dormindo é acrescido de 1
+            if not CozinheiroEvent.isSet() and canibaisDormindo == 2:                                  # Se o cozinheiro está dormindo e o número de canibais dormindo é igual a 2, prossegue;
+                CozinheiroEvent.set()                                                                  # Acorda o cozinheiro
+                print('O cozinheiro acordou\n')
+            self.dormir()                                                                              # Último canibal dorme
+
+        else:
+            mutex.acquire()                                                                            # Inicia o mutex que vai garantir a exclusão mútua da variável caldeirão
+            print(f'{self.nome} está se servindo')
+            self.podeJantar = True                                                                     # Uma vez que o canibal se serviu, ele agora pode comer
+            caldeirao -= 1                                                                             # Número de refeições no caldeirão diminui
+            time.sleep(canibalTempoServir)                                                             # Canibal leva o tempo especificado nas requisições para se servir
+            mutex.release()                                                                            # Fecha o mutex que garantiu a exclusão mútua da variável caldeirão
+
+    def comer(self):                                                                                   # Método que faz o canibal comer
+        #if self.podeJantar == True:                                                                    # Se o canibal se serviu ele pode comer
+            print(f'{self.nome} está jantando\n')
+            self.qtdRefeicoes += 1                                                                     # Quantidade de vezes que ele comeu é acrescida de 1
+            print(f'{self.nome} comeu pela {self.qtdRefeicoes}ª vez')
+            time.sleep(canibalTempoComer)                                                              # Canibal leva o tempo especificado nas requisições para comer
+
+        #self.podeJantar = False                                                                        # Canibal X, uma vez que comeu tem que se servir novamente para poder comer de novo
+
+    def comecar(self):                                                                                 # Método que faz a classe rodar
+        global timeIni
+        while True and (datetime.datetime.today() - timeIni).seconds < 120:                            # Garante que a classe rodará por 2 minutos (120 segundos)
+            self.servir()                                                                              # Chama o método servir
+            self.comer()                                                                               # Chama o método comer
+        CanibalEvent.set()                                                                             # Canibal deve estar pronta
+        CozinheiroEvent.set()                                                                          # Classe cozinheiro deve estar pronta
+
+
+class Cozinheiro:
+
+    def __init__(self, nome):                                                                          # Método de inicialização da classe que recebe o nome do cozinheiro
+        self.nome = nome                                                                               # Nome do cozinheiro instanciado
+        self.qtdJantasPreparadas = 0                                                                   # Quantas jantas o cozinheiro preparou
+        workingThread2 = Thread(target=self.comecar)                                                   # Cria a Thread
+        workingThread2.daemon = True                                                                   # Deve-se usar a thread como daemon para garantir que alguma thread permaneça rodando
+        workingThread2.start()                                                                         # Inicia a Thread
+
+    def dormir(self):                                                                                  # Método que faz o cozinheiro dormir
+        global canibais
+        print('O cozinheiro dormiu')
+        CanibalEvent.set()                                                                             # Canibais são acordados
+        for canibal in canibais:
+            canibal.dormindo = False                                                                   # Especifica que nenhum canibal está dormindo
+        CozinheiroEvent.clear()
+        CozinheiroEvent.wait()                                                                         # Cozinheiro volta a dormir
+
+    def prepara_jantar(self):                                                                          # Método em que o cozinheiro enche o caldeirão
+        mutex.acquire()                                                                                # Inicia o mutex que vai garantir a exclusão mútua da variável caldeirão
+        global caldeirao
+        print('A janta está sendo preparada')
+        caldeirao = 5                                                                                  # Pode-se fazer 5 refeições com o caldeirão cheio
+        time.sleep(jantarPreparacao)                                                                   # Cozinheiro leva o tempo especificado nas requisições para preparar o jantar
+        print('A janta está pronta')
+        self.qtdJantasPreparadas += 1                                                                  # Quantidade de vezes que o cozinheiro encheu o caldeirão é acrescida por 1
+        print(f'O caldeirão foi enchido pela {self.qtdJantasPreparadas}ª vez')
+        print('Acordem, canibais!')
+        mutex.release()                                                                                # Fecha o mutex que garantiu a exclusão mútua da variável caldeirão
+        self.dormir()                                                                                  # Uma vez que encheu o caldeirão o cozinheiro volta a dormir
+
+    def comecar(self):                                                                                 # Método que faz a classe rodar
+        CozinheiroEvent.wait()                                                                         # Como começou acordado, deve dormir
+        while True and (datetime.datetime.today() - timeIni).seconds < 120:                            # Garante que a classe rodará por 2 minutos (120 segundos)
+            self.prepara_jantar()                                                                      # Chama o método prepara_jantar()
+        CanibalEvent.set()                                                                             # Classe canibal deve estar pronta
+        CozinheiroEvent.set()                                                                          # Classe cozinheiro deve estar pronta
+
+
+if __name__ == '__main__':
+
+    timeIni = datetime.datetime.today()
+
+    cozinheiro = Cozinheiro(nome='Cozinheiro')                                                         # Instancia o objeto cozinheiro
+
+    canibais.append(Canibal(nome='Canibal 1'))                                                         # Instancia para dentro da lista canibais o canibal 1
+    canibais.append(Canibal(nome='Canibal 2'))                                                         # Instancia para dentro da lista canibais o canibal 2
+    canibais.append(Canibal(nome='Canibal 3'))                                                         # Instancia para dentro da lista canibais o canibal 3
+
+    for i in enumerate():
+        if i != enumerate()[0]:
+            i.join()                                                                                   # Faz com que uma thread espere que a outra termine
+
+    for canibal in canibais:                                                                           # Laço para dizer quantas vezes cada canibal comeu
+        print(f'{canibal.nome} comeu {canibal.qtdRefeicoes} vezes')
+
+    print(f'O cozinheiro encheu o caldeirão {cozinheiro.qtdJantasPreparadas} vezes')
